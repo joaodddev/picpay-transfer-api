@@ -1,176 +1,145 @@
-# API de Transferências - PicPay
+# 💸 PicPay Transfer API
 
-API REST de transferências financeiras entre usuários, desenvolvida com **Java 21 + Spring Boot 3 + H2 (banco em memória)**.
+API RESTful desenvolvida como solução para o [Desafio Backend PicPay](https://github.com/PicPay/picpay-desafio-backend), simulando um sistema simplificado de transferências financeiras entre usuários.
 
-## Tecnologias
+## 🚀 Tecnologias
 
-- Java 21
-- Spring Boot 3.2
-- Spring Data JPA
-- H2 Database (em memória)
-- Lombok
-- Maven
+- **Java 21**
+- **Spring Boot 3.2**
+- **Spring Data JPA**
+- **H2 Database** (em memória)
+- **Bean Validation**
+- **JUnit 5 + Mockito**
+- **Docker + Docker Compose**
+- **Maven**
 
----
+## 📋 Regras de Negócio
 
-## Como executar
+- Existem dois tipos de usuário: **Comum** e **Lojista**
+- Lojistas **só recebem** transferências — nunca enviam
+- Usuários comuns podem transferir entre si e para lojistas
+- Antes de cada transferência, o saldo do pagador é validado
+- A transferência consulta um **serviço autorizador externo** antes de ser concluída
+- Em caso de qualquer inconsistência, a transação é **revertida** automaticamente
+- Após a transferência, uma **notificação** é enviada ao recebedor (falha na notificação não reverte a transferência)
+
+## 🗂️ Estrutura do Projeto
+
+```
+src/main/java/com/picpay/transfer/
+├── client/
+│   ├── AuthorizerClient.java       # Integração com autorizador externo
+│   └── NotificationClient.java     # Integração com serviço de notificação
+├── config/
+│   └── RestTemplateConfig.java     # Configuração do RestTemplate
+├── controller/
+│   └── TransferController.java     # Endpoint POST /transfer
+├── domain/
+│   ├── entity/
+│   │   ├── User.java
+│   │   ├── Wallet.java
+│   │   └── Transfer.java
+│   └── enums/
+│       └── UserType.java
+├── dto/
+│   ├── request/TransferRequest.java
+│   └── response/TransferResponse.java
+├── exception/
+│   ├── BusinessException.java
+│   └── GlobalExceptionHandler.java
+├── repository/
+│   ├── UserRepository.java
+│   ├── WalletRepository.java
+│   └── TransferRepository.java
+└── service/
+    └── TransferService.java        # Regras de negócio + @Transactional
+```
+
+## ▶️ Como Executar
 
 ### Pré-requisitos
-- Java 21 instalado
-- Maven instalado (ou use o wrapper `./mvnw`)
+- Java 21+
+- Maven 3.8+
+- Docker (opcional)
 
-### Rodando o projeto
+### Rodando localmente
 
 ```bash
-# Clonar/extrair o projeto e entrar na pasta
-cd transfer-api
+# Clone o repositório
+git clone https://github.com/seu-usuario/picpay-transfer-api.git
+cd picpay-transfer-api
 
-# Compilar e rodar
+# Execute com Maven
 ./mvnw spring-boot:run
-
-# Ou com Maven instalado
-mvn spring-boot:run
 ```
 
-A API sobe em: **http://localhost:8080**
+A API estará disponível em `http://localhost:8080`
 
-Console H2 (banco em memória): **http://localhost:8080/h2-console**
-- JDBC URL: `jdbc:h2:mem:transferdb`
-- User: `sa`
-- Password: *(vazio)*
-
----
-
-## Dados iniciais (seed)
-
-O banco é populado automaticamente com:
-
-| ID | Nome               | CPF/CNPJ       | Tipo     | Saldo     |
-|----|--------------------|----------------|----------|-----------|
-| 1  | Alice Silva        | 12345678901    | COMMON   | R$ 500,00 |
-| 2  | Bob Santos         | 98765432100    | COMMON   | R$ 300,00 |
-| 3  | Loja do Carlos     | 12345678000195 | MERCHANT | R$ 1000,00|
-| 4  | Mercado da Maria   | 98765432000110 | MERCHANT | R$ 2500,00|
-
----
-
-## Endpoints
-
-### Usuários
-
-#### Listar todos os usuários
-```
-GET /users
-```
-
-#### Buscar usuário por ID
-```
-GET /users/{id}
-```
-
-#### Criar usuário
-```
-POST /users
-Content-Type: application/json
-
-{
-  "fullName": "João Pereira",
-  "cpfCnpj": "11122233344",
-  "email": "joao@email.com",
-  "password": "senha123",
-  "balance": 250.00,
-  "userType": "COMMON"
-}
-```
-> `userType`: `COMMON` (usuário comum) ou `MERCHANT` (lojista)
-
----
-
-### Transferências
-
-#### Realizar transferência
-```
-POST /transfer
-Content-Type: application/json
-
-{
-  "payer": 1,
-  "payee": 2,
-  "value": 50.00
-}
-```
-
-**Regras de negócio:**
-- Apenas usuários `COMMON` podem enviar transferências
-- Lojistas (`MERCHANT`) só podem **receber**
-- Saldo do pagador deve ser suficiente
-- A transferência consulta um **autorizador externo** antes de efetivar
-- Após a transferência, o recebedor é **notificado** de forma assíncrona
-
-#### Listar todas as transferências
-```
-GET /transfer
-```
-
-#### Transferências por pagador
-```
-GET /transfer/payer/{payerId}
-```
-
-#### Transferências por recebedor
-```
-GET /transfer/payee/{payeeId}
-```
-
----
-
-## Exemplos com curl
+### Rodando com Docker
 
 ```bash
-# Listar usuários
-curl http://localhost:8080/users
-
-# Transferência de Alice (ID 1) para Bob (ID 2)
-curl -X POST http://localhost:8080/transfer \
-  -H "Content-Type: application/json" \
-  -d '{"payer": 1, "payee": 2, "value": 100.00}'
-
-# Tentativa inválida: lojista tentando enviar (deve retornar 403)
-curl -X POST http://localhost:8080/transfer \
-  -H "Content-Type: application/json" \
-  -d '{"payer": 3, "payee": 1, "value": 50.00}'
-
-# Tentativa com saldo insuficiente (deve retornar 422)
-curl -X POST http://localhost:8080/transfer \
-  -H "Content-Type: application/json" \
-  -d '{"payer": 2, "payee": 1, "value": 99999.00}'
+docker-compose up --build
 ```
 
----
+## 🔌 Endpoint
 
-## Respostas de erro
+### `POST /transfer`
+
+**Request:**
+```json
+{
+  "value": 100.00,
+  "payer": 1,
+  "payee": 2
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 1,
+  "value": 100.00,
+  "payerId": 1,
+  "payeeId": 2,
+  "createdAt": "2024-05-01T10:30:00"
+}
+```
+
+**Possíveis erros (4xx):**
 
 | Status | Situação |
 |--------|----------|
-| 400    | Dados inválidos (validação) |
-| 403    | Lojista tentando transferir / Autorizador negou |
-| 404    | Usuário não encontrado |
-| 422    | Saldo insuficiente |
-| 500    | Erro interno |
+| 400 | Corpo da requisição inválido |
+| 404 | Usuário ou carteira não encontrados |
+| 422 | Saldo insuficiente, lojista enviando, transferência não autorizada |
+| 503 | Serviço autorizador indisponível |
 
----
+## 🧪 Dados de Teste (populados automaticamente)
 
-## Serviços externos (simulados)
+| ID | Nome | Tipo | Saldo |
+|----|------|------|-------|
+| 1 | Alice Souza | Comum | R$ 1.000,00 |
+| 2 | Bruno Lima | Comum | R$ 500,00 |
+| 3 | Loja do Zé | Lojista | R$ 0,00 |
 
-- **Autorizador**: `https://util.devi.tools/api/v2/authorize`
-- **Notificador**: `https://util.devi.tools/api/v1/notify`
+## 🗃️ H2 Console
 
-> Ambos são APIs públicas de mock. Se estiverem indisponíveis, a transferência será negada (autorizador) ou a falha será ignorada (notificador — não reverte a operação).
+Acesse o banco em memória pelo navegador:
 
----
+- URL: `http://localhost:8080/h2-console`
+- JDBC URL: `jdbc:h2:mem:picpaydb`
+- User: `sa`
+- Password: _(em branco)_
 
-## Executar testes
+## 🧪 Rodando os Testes
 
 ```bash
-mvn test
+./mvnw test
 ```
+
+## 📝 Decisões Técnicas
+
+- **`@Transactional` no Service**: garante que débito + crédito + persistência ocorram atomicamente — qualquer erro reverte tudo
+- **Notificação best-effort**: a falha no envio de notificação é apenas logada, sem reverter a transferência, conforme a especificação do desafio
+- **`record` para DTOs**: mais conciso e imutável por padrão
+- **`GlobalExceptionHandler`**: respostas de erro padronizadas em toda a API
